@@ -1,12 +1,22 @@
 import socket
 import struct
 import threading
+import time
 
 MCAST_GROUP = 'FF02::1'
-MCAST_PORT = 8080
+MCAST_PORT = 10000
 IFN = 'eno1'
 
-def receiver():
+UDP_IP = "2001:0690:2280:0820::10"  #server_core
+#UDP_IP = "::1" #localhost
+UDP_PORT = 5005
+
+def server_communication(message):
+    sock = socket.socket(socket.AF_INET6, # Internet
+					socket.SOCK_DGRAM) # UDP
+    sock.sendto(message.encode('utf-8'), (UDP_IP, UDP_PORT))
+
+def rsu_multicast_receiver():
     # Initialise socket for IPv6 datagrams
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 
@@ -24,9 +34,11 @@ def receiver():
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
 
     data, addr = sock.recvfrom(1024)
-    print(data.decode() + ' ' + str(addr))
+    print(data.decode())
+    server_communication(data.decode())
 
 while(True):
-    r = threading.Thread(target=receiver(), args=(1,))
+    r = threading.Thread(target=rsu_multicast_receiver(), args=(1,))
 
     r.start()
+    time.sleep(5)
