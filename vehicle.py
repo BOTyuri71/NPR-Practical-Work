@@ -6,12 +6,10 @@ class Vehicle():
         self.id = id
         self.x = x
         self.y = y
-        self.pos = self.x,self.y
 
         self.type = "FIAT"
         self.w = 0
         self.h = 0
-        self.dim = self.w,self.h
         self.weight = 0.0
 
         self.vel = 0.0
@@ -30,8 +28,8 @@ class Vehicle():
         t = time.localtime()
         current_time = time.strftime("%H:%M:%S", t)
 
-        header = str(self.id) + ',' + str(self.pos)
-        data_info = str(self.type) + ',' + str(self.dim) + ',' + str(self.weight)
-        data_vel = str(self.vel) + ',' + str(self.acc) + ',' + str(self.direction)
-        data_sensors = str(self.rain_sensor) + ',' + str(self.fog_sensor)
+        header = str(self.id) + ';' + str(self.x) + ',' + str(self.y)
+        data_info = str(self.type) + ';' + str(self.w) + ',' + str(self.h) + ';' + str(self.weight)
+        data_vel = str(self.vel) + ';' + str(self.acc) + ';' + str(self.direction)
+        data_sensors = str(self.rain_sensor) + ';' + str(self.fog_sensor)
         self.message = str(current_time) + ' ST' + ' ' + header + ' ' + data_info + ' ' + data_vel + ' ' + data_sensors

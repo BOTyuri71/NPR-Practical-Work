@@ -5,6 +5,7 @@ import time
 
 MCAST_GROUP = 'FF02::1'
 MCAST_PORT = 10000
+MCAST_PORT2 = 8080
 
 UDP_IP = "2001:0690:2280:0820::10"  #server_core
 #UDP_IP = "::1" #localhost
@@ -31,10 +32,21 @@ def rsu_multicast_receiver():
     # Construct message for joining multicast group
     mreq = struct.pack("16s15s".encode('utf-8'), socket.inet_pton(socket.AF_INET6, MCAST_GROUP), (chr(0) * 16).encode('utf-8'))
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
-
+     
     data, addr = sock.recvfrom(1024)
     print(data.decode())
     server_communication(data.decode())
+
+def rsu_multicast_sender(message):
+     # Create ipv6 datagram socket
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 32)
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, 0)
+    
+    # Allow own messages to be sent back (for local testing)
+    #sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, True)
+    sock.sendto(message.encode('utf-8'), (MCAST_GROUP, MCAST_PORT2))    
 
 while(True):
     r = threading.Thread(target=rsu_multicast_receiver(), args=(1,))
