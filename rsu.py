@@ -5,7 +5,6 @@ import time
 
 MCAST_GROUP = 'FF02::1'
 MCAST_PORT = 10000
-IFN = 'eno1'
 
 UDP_IP = "2001:0690:2280:0820::10"  #server_core
 #UDP_IP = "::1" #localhost
@@ -39,6 +38,5 @@ def rsu_multicast_receiver():
 
 while(True):
     r = threading.Thread(target=rsu_multicast_receiver(), args=(1,))
-
     r.start()
     time.sleep(5)
