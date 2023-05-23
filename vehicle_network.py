@@ -13,7 +13,7 @@ MCAST_PORT = 10000
 class Vehicle_network():
     def __init__(self,id,x,y):
         self.neighbours_table = {}
-        self.vehicle_states = []
+        self.vehicle_states = {}
         self.waiting_queue = []
         self.id = id
         self.x = x
@@ -37,7 +37,7 @@ class Vehicle_network():
         t = time.localtime()
         current_time = time.strftime("%H:%M:%S", t)
 
-        header = str(self.vehicle.id) + ';' + str(self.vehicle.x) + ',' + str(self.vehicle.y)
+        header = str(self.vehicle.id) + ' ' + str(self.vehicle.x) + ',' + str(self.vehicle.y)
         data_info = str(self.vehicle.type) + ';' + str(self.vehicle.w) + ',' + str(self.vehicle.h) + ';' + str(self.vehicle.weight)
         data_vel = str(self.vehicle.vel) + ';' + str(self.vehicle.acc) + ';' + str(self.vehicle.direction)
         data_sensors = str(self.vehicle.rain_sensor) + ';' + str(self.vehicle.fog_sensor)
@@ -66,13 +66,47 @@ class Vehicle_network():
 
         return best_id    
         
+    def compare_times(self, tempo1, tempo2):
+        tempo1 = time.strptime(tempo1, '%H:%M:%S')
+        tempo2 = time.strptime(tempo2, '%H:%M:%S')
+
+        diferenca = (tempo1.tm_hour - tempo2.tm_hour) * 3600 + \
+                (tempo1.tm_min - tempo2.tm_min) * 60 + \
+                (tempo1.tm_sec - tempo2.tm_sec)
+    
+        if diferenca < 0:
+            return -1
+        elif diferenca > 0:
+            if diferenca >= 20:
+                return 2 
+            else:
+                return 1
+        else:
+            return 0
+    
+    def update_vehicle_states(self,message):
+        vehicle_state_entry = {}
+        
+        message_splited = []
+        message_splited = message.split(' ')
+
+        if message_splited[2] not in self.vehicle_states:
+            vehicle_state_entry.update({'Time': message_splited[1]})
+            vehicle_state_entry.update({'Message': message})
+            self.vehicle_states.update({message_splited[2]: vehicle_state_entry})
+        elif message_splited[2] in self.vehicle_states:
+            key = self.vehicle_states.get(message_splited[2])
+            t = key.get("Time")
+            if self.compare_times(message_splited[1],t) > -1 :
+                vehicle_state_entry.update({'Time': message_splited[1]})
+                vehicle_state_entry.update({'Message': message})
+                self.vehicle_states.update({message_splited[2]: vehicle_state_entry})
 
     def update_neighbours_table(self,message):
         neighbours_table_entry = {}
         message_splited = []
 
         message_splited = message.split(' ')
-        print(message_splited)
 
         neighbours_table_entry.update({'Time': message_splited[1]})
         neighbours_table_entry.update({'IP': message_splited[2]})
@@ -85,6 +119,16 @@ class Vehicle_network():
         else : 
             self.neighbours_table.update({message_splited[4]: neighbours_table_entry})
         
+        t = time.localtime()
+        current_time = time.strftime("%H:%M:%S", t)
+        t = str(current_time)
+        
+        for k in list(self.neighbours_table.keys()):
+            key = self.neighbours_table.get(k)
+            t2 = key.get("Time")
+            if self.compare_times(t,t2) == 2:
+                self.neighbours_table.pop(k)
+
         print(self.neighbours_table)
 
     def vehicle_unicast_sender(self,message,ip,port):
@@ -105,14 +149,12 @@ class Vehicle_network():
                 target_address = ainfo[4]
                 break
 
-        print(str(target_address))
-
         # Associe o socket ao endereço link-local e porta
         sock.bind(target_address)
 
         while True:
             data, addr = sock.recvfrom(1024)
-            self.vehicle_states.append(str(addr) + ' ' + data.decode())      
+            self.update_vehicle_states(data.decode())      
             print(self.vehicle_states)    
 
 
@@ -127,6 +169,16 @@ class Vehicle_network():
         #sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, True)
         while True:
             sock.sendto(str(self.beacon_pdu_string()).encode('utf-8'), (MCAST_GROUP, MCAST_PORT))
+
+            if len(self.vehicle_states) > 0:
+                first_key = list(self.vehicle_states.keys())[0]
+                key = self.vehicle_states.get(first_key)
+
+                dest_items = self.neighbours_table.get(str(self.compare_distance()))
+
+                self.vehicle_unicast_sender(key.get("Message"),dest_items.get("IP"),dest_items.get("Port"))
+                del self.vehicle_states[first_key]
+
             time.sleep(5)    
 
     def vehicle_multicast_receive(self):
@@ -158,10 +210,10 @@ class Vehicle_network():
             if 'RSU' in self.neighbours_table:
                 rsu_items = self.neighbours_table.get("RSU")
                 self.vehicle_unicast_sender(self.state_pdu_string(),rsu_items.get("IP"),rsu_items.get("Port"))
-            #elif str(self.compare_distance()) != 'local':  
-            #    dest_items = self.neighbours_table.get(str(self.compare_distance()))
-            #    print(str(dest_items))
-            #    self.vehicle_unicast_sender(self.state_pdu_string(),dest_items.get("IP"),dest_items.get("Port"))
+            elif str(self.compare_distance()) != 'local':  
+               dest_items = self.neighbours_table.get(str(self.compare_distance()))
+               print(str(dest_items))
+               self.vehicle_unicast_sender(self.state_pdu_string(),dest_items.get("IP"),dest_items.get("Port"))
 
 
 parser = argparse.ArgumentParser()
@@ -171,7 +223,7 @@ parser.add_argument('port', type=int, help="Vehicle's port")
 
 args = parser.parse_args()
 
-v = Vehicle_network(args.id,10,20)
+v = Vehicle_network(args.id,1,1)
 
 v.udp_ip = args.ip
 v.udp_port = args.port

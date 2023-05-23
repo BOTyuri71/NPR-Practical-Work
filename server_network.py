@@ -6,8 +6,8 @@ import server
 import time
 
 
-UDP_IP = "::1" # = 0.0.0.0 u IPv4
-UDP_PORT = 5005
+UDP_IP = "2001:0690:2280:0820::10" # = 0.0.0.0 u IPv4
+UDP_PORT = 5000
 
 s = server.Server(50)
         

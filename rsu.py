@@ -13,7 +13,7 @@ MCAST_PORT = 10000
 class Rsu():
     def __init__(self,id,x,y):
         self.neighbours_table = {}
-        self.from_vehicle_states = []
+        self.from_vehicle_states = {}
         self.to_vehicle_warnings = []
         self.id = id
         self.x = x
@@ -38,7 +38,7 @@ class Rsu():
         t = time.localtime()
         current_time = time.strftime("%H:%M:%S", t)
 
-        header = str(self.vehicle.id) + ';' + str(self.vehicle.x) + ',' + str(self.vehicle.y)
+        header = str(self.vehicle.id) + ' ' + str(self.vehicle.x) + ',' + str(self.vehicle.y)
         data_info = str(self.vehicle.type) + ';' + str(self.vehicle.w) + ',' + str(self.vehicle.h) + ';' + str(self.vehicle.weight)
         data_vel = str(self.vehicle.vel) + ';' + str(self.vehicle.acc) + ';' + str(self.vehicle.direction)
         data_sensors = str(self.vehicle.rain_sensor) + ';' + str(self.vehicle.fog_sensor)
@@ -55,6 +55,42 @@ class Rsu():
         rsu = [self.x, self.y]
         
         return math.dist(position_int, rsu)
+
+    def compare_times(self, tempo1, tempo2):
+        tempo1 = time.strptime(tempo1, '%H:%M:%S')
+        tempo2 = time.strptime(tempo2, '%H:%M:%S')
+
+        diferenca = (tempo1.tm_hour - tempo2.tm_hour) * 3600 + \
+                (tempo1.tm_min - tempo2.tm_min) * 60 + \
+                (tempo1.tm_sec - tempo2.tm_sec)
+    
+        if diferenca < 0:
+            return -1
+        elif diferenca > 0:
+            if diferenca >= 20:
+                return 2 
+            else:
+                return 1
+        else:
+            return 0
+    
+    def update_from_vehicle_table(self,message):
+        vehicle_state_entry = {}
+        
+        message_splited = []
+        message_splited = message.split(' ')
+
+        if message_splited[2] not in self.from_vehicle_states:
+            vehicle_state_entry.update({'Time': message_splited[1]})
+            vehicle_state_entry.update({'Message': message})
+            self.from_vehicle_states.update({message_splited[2]: vehicle_state_entry})
+        elif message_splited[2] in self.from_vehicle_states:
+            key = self.from_vehicle_states.get(message_splited[2])
+            t = key.get("Time")
+            if self.compare_times(message_splited[1],t) > -1 :
+                vehicle_state_entry.update({'Time': message_splited[1]})
+                vehicle_state_entry.update({'Message': message})
+                self.from_vehicle_states.update({message_splited[2]: vehicle_state_entry})
 
     def update_neighbours_table(self,message):
         neighbours_table_entry = {}
@@ -73,7 +109,18 @@ class Rsu():
         else : 
             self.neighbours_table.update({message_splited[4]: neighbours_table_entry})
         
-        print(self.neighbours_table)  
+        t = time.localtime()
+        current_time = time.strftime("%H:%M:%S", t)
+        t = str(current_time)
+        
+        for k in list(self.neighbours_table.keys()):
+            key = self.neighbours_table.get(k)
+            t2 = key.get("Time")
+            if self.compare_times(t,t2) == 2:
+                self.neighbours_table.pop(k)
+
+        print(self.neighbours_table)
+
 
     def rsu_unicast_sender(self,message,ip,port):
         sock = socket.socket(socket.AF_INET6, # Internet
@@ -90,15 +137,12 @@ class Rsu():
                 target_address = ainfo[4]
                 break
 
-        print(str(target_address))
-
         # Associe o socket ao endereço link-local e porta
         sock.bind(target_address)
 
         while True:
             data, addr = sock.recvfrom(1024)
-            print(data.decode())
-            self.from_vehicle_states.append(str(addr) + ' ' + data.decode())      
+            self.update_from_vehicle_table(data.decode())     
             print(self.from_vehicle_states)    
 
     def rsu_multicast_sender(self):
@@ -117,7 +161,12 @@ class Rsu():
         #sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, True)
         while True:
             sock.sendto(str(self.beacon_pdu_string()).encode('utf-8'), (MCAST_GROUP, MCAST_PORT))
-            #.rsu_unicast_sender(self.state_pdu_string(),"::1",5005)
+
+            if len(self.from_vehicle_states) > 0:
+                first_key = list(self.from_vehicle_states.keys())[0]
+                key = self.from_vehicle_states.get(first_key)
+                self.rsu_unicast_sender(key.get("Message"),'2001:0690:2280:0820::10',5000)
+                del self.from_vehicle_states[first_key]
             time.sleep(5)
             
     def rsu_multicast_receiver(self):
