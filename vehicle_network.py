@@ -5,6 +5,7 @@ import struct
 import vehicle
 import time
 import math
+import re
 
 MCAST_GROUP = 'FF16::1'
 MCAST_PORT = 10000
@@ -22,11 +23,13 @@ class Vehicle_network():
         self.udp_port = 5005
 
     def beacon_pdu_string(self):
+        ip = re.sub(r'%.*', '', self.udp_ip)
+        
         t = time.localtime()
         current_time = time.strftime("%H:%M:%S", t)
 
         beacon_message = str(self.vehicle.id) + ' ' + str(self.vehicle.x) + ',' + str(self.vehicle.y)
-        self.message =  str(self.udp_port) + ' ' + str(current_time) + ' B ' + beacon_message
+        self.message =  'B ' + str(current_time)  + ' ' + str(ip) + ' ' + str(self.udp_port) + ' ' + beacon_message
 
         return self.message
     
@@ -38,7 +41,7 @@ class Vehicle_network():
         data_info = str(self.vehicle.type) + ';' + str(self.vehicle.w) + ',' + str(self.vehicle.h) + ';' + str(self.vehicle.weight)
         data_vel = str(self.vehicle.vel) + ';' + str(self.vehicle.acc) + ';' + str(self.vehicle.direction)
         data_sensors = str(self.vehicle.rain_sensor) + ';' + str(self.vehicle.fog_sensor)
-        self.message = str(current_time) + ' ST' + ' ' + header + ' ' + data_info + ' ' + data_vel + ' ' + data_sensors
+        self.message = 'ST ' + str(current_time) + ' ' + header + ' ' + data_info + ' ' + data_vel + ' ' + data_sensors
 
         return self.message
     
@@ -69,9 +72,11 @@ class Vehicle_network():
         message_splited = []
 
         message_splited = message.split(' ')
+        print(message_splited)
 
-        neighbours_table_entry.update({'IP': message_splited[0]})
-        neighbours_table_entry.update({'Port': message_splited[1]})
+        neighbours_table_entry.update({'Time': message_splited[1]})
+        neighbours_table_entry.update({'IP': message_splited[2]})
+        neighbours_table_entry.update({'Port': message_splited[3]})
         neighbours_table_entry.update({'Position': message_splited[5]})
         neighbours_table_entry.update({'Distance': self.calculate_distance(message_splited[5])})
 
@@ -89,12 +94,21 @@ class Vehicle_network():
             sock.sendto(message.encode('utf-8'), (ip, int(port)))  
             sock.close()  
         except: 
-            print("Conexão não é possível com " + ip + ' ' + port + '!')
+            print("Conexão não é possível com " + ip + ' ' + str(port) + '!')
 
     def vehicle_unicast_receiver(self):
-        sock = socket.socket(socket.AF_INET6, # Internet
-						socket.SOCK_DGRAM) # UDP
-        sock.bind((self.udp_ip, self.udp_port))
+
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+        for ainfo in socket.getaddrinfo(self.udp_ip, self.udp_port):
+            if ainfo[0].name == 'AF_INET6' and ainfo[1].name == 'SOCK_DGRAM':
+                target_address = ainfo[4]
+                break
+
+        print(str(target_address))
+
+        # Associe o socket ao endereço link-local e porta
+        sock.bind(target_address)
 
         while True:
             data, addr = sock.recvfrom(1024)
@@ -113,7 +127,6 @@ class Vehicle_network():
         #sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, True)
         while True:
             sock.sendto(str(self.beacon_pdu_string()).encode('utf-8'), (MCAST_GROUP, MCAST_PORT))
-            self.vehicle_unicast_sender(self.state_pdu_string(),"2005::4",5002)
             time.sleep(5)    
 
     def vehicle_multicast_receive(self):
@@ -139,7 +152,7 @@ class Vehicle_network():
             # Receive the multicast message
             data, address = sock.recvfrom(1024)
             # Process the received message here
-            message = address[0] + ' ' + data.decode('utf-8')
+            message =  data.decode('utf-8')
             self.update_neighbours_table(message)
 
             if 'RSU' in self.neighbours_table:

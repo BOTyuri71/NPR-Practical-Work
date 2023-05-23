@@ -5,6 +5,7 @@ import threading
 import time
 import math
 import vehicle
+import re
 
 MCAST_GROUP = 'FF16::1'
 MCAST_PORT = 10000
@@ -17,9 +18,21 @@ class Rsu():
         self.id = id
         self.x = x
         self.y = y
-        self.udp_ip = "" 
+        self.udp_ip = "fe80::200:ff:feaa:62%eth2" 
         self.udp_port = 5005
         self.vehicle = vehicle.Vehicle(10,3,4)
+
+    def beacon_pdu_string(self):
+        ip = re.sub(r'%.*', '', self.udp_ip)
+
+        t = time.localtime()
+        current_time = time.strftime("%H:%M:%S", t)
+
+
+        beacon_message = str(self.id) + ' ' + str(self.x) + ',' + str(self.y)
+        self.message =  'B ' + str(current_time) + ' ' + (ip) + ' ' + str(self.udp_port) + ' ' + beacon_message
+
+        return self.message
 
     def state_pdu_string(self):
         t = time.localtime()
@@ -29,18 +42,10 @@ class Rsu():
         data_info = str(self.vehicle.type) + ';' + str(self.vehicle.w) + ',' + str(self.vehicle.h) + ';' + str(self.vehicle.weight)
         data_vel = str(self.vehicle.vel) + ';' + str(self.vehicle.acc) + ';' + str(self.vehicle.direction)
         data_sensors = str(self.vehicle.rain_sensor) + ';' + str(self.vehicle.fog_sensor)
-        self.message = str(current_time) + ' ST' + ' ' + header + ' ' + data_info + ' ' + data_vel + ' ' + data_sensors
+        self.message = 'ST ' + str(current_time) + ' ' + header + ' ' + data_info + ' ' + data_vel + ' ' + data_sensors
 
         return self.message
         
-    def beacon_pdu_string(self):
-        t = time.localtime()
-        current_time = time.strftime("%H:%M:%S", t)
-
-        beacon_message = str(self.id) + ' ' + str(self.x) + ',' + str(self.y)
-        self.message = str(self.udp_port) + ' ' + str(current_time) + ' B ' + beacon_message
-
-        return self.message
 
     def calculate_distance(self,position):
         
@@ -57,8 +62,9 @@ class Rsu():
 
         message_splited = message.split(' ')
 
-        neighbours_table_entry.update({'IP': message_splited[0]})
-        neighbours_table_entry.update({'Port': message_splited[1]})
+        neighbours_table_entry.update({'Time': message_splited[1]})
+        neighbours_table_entry.update({'IP': message_splited[2]})
+        neighbours_table_entry.update({'Port': message_splited[3]})
         neighbours_table_entry.update({'Position': message_splited[5]})
         neighbours_table_entry.update({'Distance': self.calculate_distance(message_splited[5])})
 
@@ -76,9 +82,18 @@ class Rsu():
         sock.close()
 
     def rsu_unicast_receiver(self):
-        sock = socket.socket(socket.AF_INET6, # Internet
-						socket.SOCK_DGRAM) # UDP
-        sock.bind((self.udp_ip, self.udp_port))
+        
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+        for ainfo in socket.getaddrinfo(self.udp_ip, self.udp_port):
+            if ainfo[0].name == 'AF_INET6' and ainfo[1].name == 'SOCK_DGRAM':
+                target_address = ainfo[4]
+                break
+
+        print(str(target_address))
+
+        # Associe o socket ao endereço link-local e porta
+        sock.bind(target_address)
 
         while True:
             data, addr = sock.recvfrom(1024)
@@ -130,18 +145,18 @@ class Rsu():
             # Receive the multicast message
             data, address = sock.recvfrom(1024)
             # Process the received message here
-            message = address[0] + ' ' + data.decode('utf-8')
+            message = data.decode('utf-8')
             self.update_neighbours_table(message)      
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('ip', type=str, help="RSU's IP")
+#parser.add_argument('ip', type=str, help="RSU's IP")
 parser.add_argument('port', type=int, help="RSU's port")
 
 args = parser.parse_args()
     
 rsu = Rsu('RSU',628,66)
-rsu.udp_ip = args.ip
+#rsu.udp_ip = args.ip
 rsu.udp_port = args.port
 
 r = threading.Thread(target=rsu.rsu_multicast_receiver)
