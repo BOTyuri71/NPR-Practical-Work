@@ -12,12 +12,12 @@ class Vehicle():
         self.h = 0
         self.weight = 0.0
 
-        self.vel = 0.0
+        self.vel = 60.0
         self.acc = 2.0
         self.direction = 'north'
 
-        self.rain_sensor = False
-        self.fog_sensor = False
+        self.rain_sensor = True
+        self.fog_sensor = True
 
         self.message = ''
 

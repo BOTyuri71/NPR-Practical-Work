@@ -22,6 +22,12 @@ class Rsu():
         self.udp_port = 5005
         self.vehicle = vehicle.Vehicle(10,3,4)
 
+    def split_message(self,message):
+        message_splited = []
+        message_splited = message.split(' ')
+
+        return message_splited
+
     def beacon_pdu_string(self):
         ip = re.sub(r'%.*', '', self.udp_ip)
 
@@ -45,7 +51,18 @@ class Rsu():
         self.message = 'ST ' + str(current_time) + ' ' + header + ' ' + data_info + ' ' + data_vel + ' ' + data_sensors
 
         return self.message
+    
+    def compare_distance(self):
         
+        best_id = 'local'
+        best_id_distance = 9999999
+
+        for k, v in self.neighbours_table.items():
+            if v.get('Distance') < best_id_distance:
+                best_id = k
+                best_id_distance = v.get('Distance')
+
+        return best_id    
 
     def calculate_distance(self,position):
         
@@ -73,24 +90,28 @@ class Rsu():
                 return 1
         else:
             return 0
-    
+        
     def update_from_vehicle_table(self,message):
         vehicle_state_entry = {}
-        
+
         message_splited = []
         message_splited = message.split(' ')
 
-        if message_splited[2] not in self.from_vehicle_states:
+        if message_splited[3] not in self.from_vehicle_states:
             vehicle_state_entry.update({'Time': message_splited[1]})
             vehicle_state_entry.update({'Message': message})
             self.from_vehicle_states.update({message_splited[2]: vehicle_state_entry})
-        elif message_splited[2] in self.from_vehicle_states:
+        elif message_splited[3] in self.from_vehicle_states:
             key = self.from_vehicle_states.get(message_splited[2])
             t = key.get("Time")
             if self.compare_times(message_splited[1],t) > -1 :
                 vehicle_state_entry.update({'Time': message_splited[1]})
                 vehicle_state_entry.update({'Message': message})
                 self.from_vehicle_states.update({message_splited[2]: vehicle_state_entry})
+
+    def update_to_vehicle_table(self,message):
+        
+        self.to_vehicle_warnings.append(message)
 
     def update_neighbours_table(self,message):
         neighbours_table_entry = {}
@@ -128,7 +149,7 @@ class Rsu():
         sock.sendto(str(message).encode('utf-8'), (ip, int(port)))
         sock.close()
 
-    def rsu_unicast_receiver(self):
+    def rsu_unicast_receiver_vehicle(self):
         
         sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
@@ -143,7 +164,24 @@ class Rsu():
         while True:
             data, addr = sock.recvfrom(1024)
             self.update_from_vehicle_table(data.decode())     
-            print(self.from_vehicle_states)    
+            print(self.from_vehicle_states) 
+
+    def rsu_unicast_receiver_server(self):
+        
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+        for ainfo in socket.getaddrinfo('2001:0690:2280:0820::1', 5005):
+            if ainfo[0].name == 'AF_INET6' and ainfo[1].name == 'SOCK_DGRAM':
+                target_address = ainfo[4]
+                break
+
+        # Associe o socket ao endereço link-local e porta
+        sock.bind(target_address)
+
+        while True:
+            data, addr = sock.recvfrom(1024)
+            self.update_to_vehicle_table(data.decode())     
+            print(self.to_vehicle_warnings)                
 
     def rsu_multicast_sender(self):
 
@@ -167,7 +205,13 @@ class Rsu():
                 key = self.from_vehicle_states.get(first_key)
                 self.rsu_unicast_sender(key.get("Message"),'2001:0690:2280:0820::10',5000)
                 del self.from_vehicle_states[first_key]
-            time.sleep(5)
+            
+            if len(self.to_vehicle_warnings) > 0:
+
+                sock.sendto(str(self.to_vehicle_warnings[0]).encode('utf-8'), (MCAST_GROUP, MCAST_PORT))    
+                del self.to_vehicle_warnings[0]    
+
+            time.sleep(3)
             
     def rsu_multicast_receiver(self):
         # Initialise socket for IPv6 datagrams
@@ -188,15 +232,15 @@ class Rsu():
         mreq = struct.pack("16si".encode('utf-8'), socket.inet_pton(socket.AF_INET6, MCAST_GROUP), face_index)
         sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
 
-        print('listening on port:', sock.getsockname()[1])
      
         while True:
             # Receive the multicast message
             data, address = sock.recvfrom(1024)
             # Process the received message here
             message = data.decode('utf-8')
-            self.update_neighbours_table(message)      
-
+            if message.startswith("B "):
+                self.update_neighbours_table(message)   
+            
 
 parser = argparse.ArgumentParser()
 #parser.add_argument('ip', type=str, help="RSU's IP")
@@ -214,9 +258,12 @@ r.start()
 s = threading.Thread(target=rsu.rsu_multicast_sender)
 s.daemon = True
 s.start()
-ur = threading.Thread(target=rsu.rsu_unicast_receiver)
-ur.daemon = True
-ur.start()
+urv = threading.Thread(target=rsu.rsu_unicast_receiver_vehicle)
+urv.daemon = True
+urv.start()
+urs = threading.Thread(target=rsu.rsu_unicast_receiver_server)
+urs.daemon = True
+urs.start()
 
 while(True):
     pass

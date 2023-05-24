@@ -13,8 +13,10 @@ MCAST_PORT = 10000
 class Vehicle_network():
     def __init__(self,id,x,y):
         self.neighbours_table = {}
+        self.neighbours_table_reverse = {}
         self.vehicle_states = {}
-        self.waiting_queue = []
+        self.my_warnings = {}
+        self.warnings_queue = []
         self.id = id
         self.x = x
         self.y = y
@@ -53,6 +55,16 @@ class Vehicle_network():
         rsu = [628, 66]
         
         return math.dist(position_int, rsu)
+    
+    def calculate_distance_warnings(self,position1,position2):
+        
+        position1_splited = position1.split(',')
+        position1_int = [int(position1_splited[0]),int(position1_splited[1])]
+
+        position2_splited = position2.split(',')
+        position2_int = [int(position2_splited[0]),int(position2_splited[1])]
+        
+        return math.dist(position1_int, position2_int)
 
     def compare_distance(self):
         
@@ -79,6 +91,8 @@ class Vehicle_network():
         elif diferenca > 0:
             if diferenca >= 20:
                 return 2 
+            if diferenca >= 200:
+                return 3 
             else:
                 return 1
         else:
@@ -131,6 +145,58 @@ class Vehicle_network():
 
         print(self.neighbours_table)
 
+    def update_warning(self,message):
+        warning_table_entry = []
+        
+        message_splited = []
+        message_splited = message.split(' ')
+        print(message_splited)
+
+        if message_splited[3] == str(self.id):
+            if message_splited[1] == 'V':
+                warning_table_entry.append('Cuidado! Está em excesso de velocidade. Reduza para sua segurança!')
+            if message_splited[1] == 'W':
+                warning_table_entry.append('Atenção! Está com uma velocidade elevada para as condições climatéricas atuais.')
+            self.my_warnings.update({ message_splited[2]:warning_table_entry})
+        else:
+            self.warnings_queue.append(message)      
+
+        t = time.localtime()
+        current_time = time.strftime("%H:%M:%S", t)
+        t = str(current_time)
+
+        for k in list(self.my_warnings.keys()):
+            if self.compare_times(t,k) == 3:
+                self.my_warnings.pop(k)
+
+        print(self.my_warnings)
+        print(self.warnings_queue)
+
+        if len(self.warnings_queue) > 0:
+            new_table = dict(self.neighbours_table)
+            print(new_table)
+            if "RSU" in new_table:
+                new_table.pop("RSU")
+            if "local" in new_table:
+                new_table.pop("local")
+            for k in new_table:
+                dicionario_interno = new_table[k]
+                dicionario_interno["Distance_to_dest"] = self.calculate_distance_warnings(message_splited[4],dicionario_interno.get("Position"))
+            print(new_table)
+
+            best_id = 'local'
+            best_id_distance = 9999999
+
+            for k, v in new_table.items():
+                if v.get('Distance') < best_id_distance:
+                    best_id = k
+                    best_id_distance = v.get('Distance')  
+
+
+            dest_items = new_table.get(str(best_id))
+            self.vehicle_unicast_sender(str(self.warnings_queue[0]),dest_items.get("IP"),dest_items.get("Port"))
+            del self.warnings_queue[0]
+    
     def vehicle_unicast_sender(self,message,ip,port):
         try:
             sock = socket.socket(socket.AF_INET6, # Internet
@@ -154,9 +220,12 @@ class Vehicle_network():
 
         while True:
             data, addr = sock.recvfrom(1024)
-            self.update_vehicle_states(data.decode())      
-            print(self.vehicle_states)    
-
+            message = data.decode()
+            if message.startswith("ST "):
+                self.update_vehicle_states(data.decode())      
+                print(self.vehicle_states)    
+            if message.startswith("W "):
+                self.update_warning(message)
 
     def vehicle_multicast_sender(self):
 
@@ -170,6 +239,13 @@ class Vehicle_network():
         while True:
             sock.sendto(str(self.beacon_pdu_string()).encode('utf-8'), (MCAST_GROUP, MCAST_PORT))
 
+            if 'RSU' in self.neighbours_table:
+                rsu_items = self.neighbours_table.get("RSU")
+                self.vehicle_unicast_sender(self.state_pdu_string(),rsu_items.get("IP"),rsu_items.get("Port"))
+            elif str(self.compare_distance()) != 'local':  
+               dest_items = self.neighbours_table.get(str(self.compare_distance()))
+               self.vehicle_unicast_sender(self.state_pdu_string(),dest_items.get("IP"),dest_items.get("Port"))
+
             if len(self.vehicle_states) > 0:
                 first_key = list(self.vehicle_states.keys())[0]
                 key = self.vehicle_states.get(first_key)
@@ -179,7 +255,7 @@ class Vehicle_network():
                 self.vehicle_unicast_sender(key.get("Message"),dest_items.get("IP"),dest_items.get("Port"))
                 del self.vehicle_states[first_key]
 
-            time.sleep(5)    
+            time.sleep(3)    
 
     def vehicle_multicast_receive(self):
 
@@ -205,16 +281,10 @@ class Vehicle_network():
             data, address = sock.recvfrom(1024)
             # Process the received message here
             message =  data.decode('utf-8')
-            self.update_neighbours_table(message)
-
-            if 'RSU' in self.neighbours_table:
-                rsu_items = self.neighbours_table.get("RSU")
-                self.vehicle_unicast_sender(self.state_pdu_string(),rsu_items.get("IP"),rsu_items.get("Port"))
-            elif str(self.compare_distance()) != 'local':  
-               dest_items = self.neighbours_table.get(str(self.compare_distance()))
-               print(str(dest_items))
-               self.vehicle_unicast_sender(self.state_pdu_string(),dest_items.get("IP"),dest_items.get("Port"))
-
+            if message.startswith('B '):
+                self.update_neighbours_table(message)
+            if message.startswith('W '):
+                self.update_warning(message)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('id', type=int, help="Vehicle's ID")
@@ -223,7 +293,7 @@ parser.add_argument('port', type=int, help="Vehicle's port")
 
 args = parser.parse_args()
 
-v = Vehicle_network(args.id,1,1)
+v = Vehicle_network(args.id,0,0)
 
 v.udp_ip = args.ip
 v.udp_port = args.port
