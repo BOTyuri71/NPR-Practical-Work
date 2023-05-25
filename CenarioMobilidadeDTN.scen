@@ -12,14 +12,9 @@ $node_(10) set Z_ 0.00
 $node_(12) set X_ 500.0
 $node_(12) set Y_ 350.0
 $node_(12) set Z_ 0.00
-$ns_ at 5.00 "$node_(11) setdest 0 325.0 7.0"
-$ns_ at 10.00 "$node_(11) setdest 0 475.0 17.0"
-$ns_ at 15.00 "$node_(11) setdest 0 300.0 27.0"
-$ns_ at 10.00 "$node_(11) setdest 300 620.0 10.0"
-$ns_ at 5.00 "$node_(10) setdest 0 150.0 12.0"
-$ns_ at 10.00 "$node_(10) setdest 0 250.0 15.0"
-$ns_ at 10.00 "$node_(10) setdest 0 416.0 20.0"
-$ns_ at 10.00 "$node_(10) setdest 200 316.0 5.0"
-$ns_ at 3.00 "$node_(12) setdest 0 125.0 15.0"
-$ns_ at 10.00 "$node_(12) setdest 0 450.0 10.0"
-$ns_ at 15.00 "$node_(12) setdest 300 300.0 20.0"
+$ns_ at 5.00 "$node_(11) setdest 550.0 150.0 4.0"
+$ns_ at 10.00 "$node_(11) setdest 500.0 150.0 4.0"
+$ns_ at 5.00 "$node_(10) setdest 450.0 250.0 4.0"
+$ns_ at 10.00 "$node_(10) setdest 400.0 250.0 4.0"
+$ns_ at 5.00 "$node_(12) setdest 450.0 350.0 4.0"
+$ns_ at 10.00 "$node_(12) setdest 400.0 350.0 4.0"
