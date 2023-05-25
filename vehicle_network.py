@@ -24,6 +24,118 @@ class Vehicle_network():
         self.udp_ip = "" 
         self.udp_port = 5005
 
+    def extract_coord_x(self,linha,node_id):
+        padrao = r"\$node_\({}\) set X_ (\d+\.\d+)".format(node_id)
+        match = re.search(padrao, linha)
+        if match:
+            x = float(match.group(1))
+            x = int(x)
+            return x
+        return None   
+
+    def extract_coord_y(self,linha,node_id):
+        padrao = r"\$node_\({}\) set Y_ (\d+\.\d+)".format(node_id)
+        match = re.search(padrao, linha)
+        if match:
+            y = float(match.group(1))
+            y = int(y)
+            return y
+        return None
+
+    def extract_coord5(self,linha,node_id):
+        padrao = r"\$node_\({}\) setdest (\d+\.\d+) (\d+\.\d+)".format(node_id)
+        padrao_valor = r"at (\d+\.\d+)"
+
+        match_coordenadas = re.search(padrao, linha)
+        match_valor = re.search(padrao_valor, linha)
+        
+        if match_coordenadas and match_valor:
+            x = float(match_coordenadas.group(1))
+            x = int(x)
+            y = float(match_coordenadas.group(2))
+            y = int(y)
+            valor = float(match_valor.group(1))
+            valor = int(valor)
+            if valor == 5:
+                return x, y, valor
+            else:
+                return None
+        return None  
+
+    def extract_coord10(self,linha,node_id):
+        padrao = r"\$node_\({}\) setdest (\d+\.\d+) (\d+\.\d+)".format(node_id)
+        padrao_valor = r"at (\d+\.\d+)"
+
+        match_coordenadas = re.search(padrao, linha)
+        match_valor = re.search(padrao_valor, linha)
+        
+        if match_coordenadas and match_valor:
+            x = float(match_coordenadas.group(1))
+            x = int(x)
+            y = float(match_coordenadas.group(2))
+            y = int(y)
+            valor = float(match_valor.group(1))
+            valor = int(valor)
+            if valor == 10:
+                return x, y, valor
+            else:
+                return None
+        return None  
+
+    def parse_coord0(self):
+        with open("/home/core/Desktop/NPR23/CenarioMobilidadeDTN.scen", "r") as file:
+            for linha in file:
+                # Verificar se a linha contém as coordenadas de um nó
+                if linha.startswith("$node_"):
+                    coordenada_x_nodo = self.extract_coord_x(linha,self.id)
+                    if coordenada_x_nodo:
+                        x = coordenada_x_nodo
+                        self.vehicle.setX(x)
+                    coordenada_y_nodo = self.extract_coord_y(linha,self.id)
+                    if coordenada_y_nodo:
+                        y = coordenada_y_nodo
+                        self.vehicle.setY(y)    
+
+    def parse_coord5(self):
+        with open("/home/core/Desktop/NPR23/CenarioMobilidadeDTN.scen", "r") as file:
+            for linha in file:
+                # Verificar se a linha contém as coordenadas de um nó
+                if linha.startswith("$ns_"):
+                    coordenada_nodo = self.extract_coord5(linha,self.id)
+                    if coordenada_nodo:
+                        x, y, valor = coordenada_nodo
+                        self.vehicle.setX(x)
+                        self.vehicle.setY(y)
+
+    def parse_coord10(self):
+        with open("/home/core/Desktop/NPR23/CenarioMobilidadeDTN.scen", "r") as file:
+            for linha in file:
+                # Verificar se a linha contém as coordenadas de um nó
+                if linha.startswith("$ns_"):
+                    coordenada_nodo = self.extract_coord10(linha,self.id)
+                    if coordenada_nodo:
+                        x, y, valor = coordenada_nodo
+                        self.vehicle.setX(x)
+                        self.vehicle.setY(y)
+
+    def parse_postions(self):
+        counter = 0
+
+        while True:
+            if counter == 0:
+                self.parse_coord0()
+
+            time.sleep(5)
+            counter += 5
+
+            if counter == 5:
+                self.parse_coord5()
+
+            if counter == 10:
+                self.parse_coord10()
+                time.sleep(2)
+                counter = 0  # Reset do contador
+
     def beacon_pdu_string(self):
         ip = re.sub(r'%.*', '', self.udp_ip)
         
@@ -236,6 +348,7 @@ class Vehicle_network():
     
         # Allow own messages to be sent back (for local testing)
         #sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, True)
+
         while True:
             sock.sendto(str(self.beacon_pdu_string()).encode('utf-8'), (MCAST_GROUP, MCAST_PORT))
 
@@ -307,6 +420,9 @@ s.start()
 ur = threading.Thread(target=v.vehicle_unicast_receiver)
 ur.daemon = True
 ur.start()
+p = threading.Thread(target=v.parse_postions)
+p.daemon = True
+p.start()
 
 while True:
     pass
